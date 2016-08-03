@@ -1,0 +1,128 @@
+package  com.drools.cep.test;
+
+import com.drools.cep.ClaimApprovedEvent;
+import com.drools.cep.Account;
+
+declare ClaimApprovedEvent
+	#declare a fact type as an event, default is 'fact'
+	@role( event )
+end
+
+# Decalare common data structure for all rules to use
+declare AccountInfo
+    accountNumber : String
+	aveOfLastClaims : Double
+	aveForPeriod : Double
+	eligibleForBonusClaims : Boolean
+	eligibleForPeriodicBonus : Boolean
+end
+
+
+rule "FiveLastClaims"
+dialect "mvel"
+no-loop true
+salience 100
+
+when
+	$account : Account()
+	
+	# check if the average of last five claims is less 
+	# than the account threshold
+	$aveOfLastClaims : Number($account.threshold > doubleValue ) 
+	from accumulate(
+		ClaimApprovedEvent(
+			accountNumber == $account.number, 
+			$amount : amount
+		) 
+		over window:length( 5 ) from 
+		entry-point ClaimStream, 
+		average($amount)
+	)
+	
+	# the member must not have received eligibility 
+	# for last claim bonus yet 
+	$accountInfo : AccountInfo( 
+			accountNumber == $account.number, 
+			eligibleForBonusClaims == false 
+	)
+then
+	//modify($accountInfo) {
+	//	setAveOfLastClaims($aveOfLastClaims);
+		//setEligibleForBonusClaims(true);
+	//};
+	modify($accountInfo) {
+		aveOfLastClaims=$aveOfLastClaims,
+		eligibleForBonusClaims=true;
+	}
+end
+
+
+rule "NinetyDaysPeriod"
+dialect "mvel"
+no-loop true
+salience 90
+
+when
+	$account : Account()
+	
+	# check if the average of claims for period is less 
+	# than the account threshold
+	$aveForPeriod : Number($account.threshold > doubleValue ) 
+	from accumulate(
+		ClaimApprovedEvent(
+			accountNumber == $account.number, 
+			$amount : amount
+		) 
+		over window:time( 90d ) from 
+		entry-point ClaimStream, 
+		average($amount)
+	)
+	
+	# the member must have eligibility for last claim bonus and
+	# the member must not have received eligibility for 
+	# periodic bonus yet
+	$accountInfo : AccountInfo( 
+			accountNumber == $account.number, 
+			eligibleForBonusClaims == true, 
+			eligibleForPeriodicBonus == false 
+	)
+then
+	//modify($accountInfo) {
+	//	setAveForPeriod($aveForPeriod);
+	//	setEligibleForPeriodicBonus(true);
+	//};
+	modify($accountInfo) {
+		aveForPeriod = $aveForPeriod,
+		eligibleForPeriodicBonus = true
+	}
+end
+
+
+
+rule "EligibleForVoucher"
+dialect "mvel"
+no-loop true
+salience 80
+
+when
+	$account : Account()
+	
+	# the member must have eligibility for last claim bonus and
+	# the member must have eligibility for periodic bonus
+	$accountInfo : AccountInfo( 
+			accountNumber == $account.number, 
+			eligibleForBonusClaims == true, 
+			eligibleForPeriodicBonus == true
+	)
+then
+	System.out.println("Notifying policy member..."); 
+	System.out.println("Dear member, you have claimed in average $" + 
+		$accountInfo.aveOfLastClaims + " during last five claims, which is "
+		+ "under the account threshold of $" + $account.threshold);
+		
+	System.out.println("Dear member, you have claimed in average $" + 
+	$accountInfo.aveForPeriod + " during last 90 days, which is "
+	+ "under the account threshold of $" + $account.threshold);
+	
+	System.out.println("You are eligible for a holiday!");
+end

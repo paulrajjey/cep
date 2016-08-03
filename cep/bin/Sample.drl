@@ -1,0 +1,31 @@
+package com.sample
+ 
+import com.sample.DroolsTest.Message;
+import com.sample.DroolsTest.MessageText
+ 
+rule "Hello World"
+    when
+        m : Message( status == Message.HELLO,  message == "Hello World" , myMessage : message )
+    then
+        System.out.println( myMessage );
+        m.setMessage( "Goodbye cruel world" );
+        m.setStatus( Message.GOODBYE );
+        update( m );
+end
+rule "GoodByeText"
+    when
+        m: MessageText( status == Message.HELLO, message != "Helloo jey updated" , myMessage : message )
+         m1 : Message( status == Message.GOODBYE, my1Message : message )
+    then
+		m1.setMessage( "Helloo jey goodbye updated" );
+        m1.setStatus( Message.HELLO );
+        update( m1 );  
+        System.out.println( myMessage );
+end
+rule "GoodBye"
+    when
+        Message( status == Message.GOODBYE, myMessage : message )
+    then
+		insertLogical(new MessageText("Helloo jey",Message.HELLO));      
+        System.out.println( myMessage );
+end
